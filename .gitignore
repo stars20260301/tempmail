@@ -1,0 +1,19 @@
+# 环境配置（含密码/IP等敏感信息）
+.env
+
+# 运行时数据（admin key 等）
+data/
+
+# Go build artifacts
+api/tempmail
+api/*.exe
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

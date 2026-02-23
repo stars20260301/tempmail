@@ -1,0 +1,43 @@
+# ============================================================
+# Postfix 主配置 - 仅收件模式 (catch-all)
+# ============================================================
+smtpd_banner = $myhostname ESMTP
+biff = no
+append_dot_mydomain = no
+
+# TLS (基础)
+smtpd_use_tls = no
+
+# 基本设置
+myhostname = mail.123nhh.xyz
+mydomain = 123nhh.xyz
+myorigin = $mydomain
+inet_interfaces = all
+inet_protocols = ipv4
+
+# 只收件，不中继
+mydestination =
+relay_domains =
+local_transport = error:local delivery disabled
+local_recipient_maps =
+
+# 虚拟域名 catch-all
+virtual_mailbox_domains = hash:/etc/postfix/virtual_domains
+virtual_transport = mailreceiver:
+
+# 限制
+smtpd_recipient_restrictions =
+    permit_mynetworks,
+    reject_unauth_destination
+
+# 性能优化
+smtpd_client_connection_count_limit = 50
+smtpd_client_connection_rate_limit = 100
+default_process_limit = 100
+maximal_queue_lifetime = 1d
+bounce_queue_lifetime = 1d
+message_size_limit = 10240000
+
+# 并发
+smtp_destination_concurrency_limit = 20
+default_destination_concurrency_limit = 50
