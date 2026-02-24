@@ -27,7 +27,7 @@ services:
       - "-c"
       - "maintenance_work_mem=64MB"
       - "-c"
-      - "max_connections=200"
+      - "max_connections=500"
       - "-c"
       - "wal_buffers=16MB"
       - "-c"

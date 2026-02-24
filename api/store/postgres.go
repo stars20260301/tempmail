@@ -28,9 +28,9 @@ func New(ctx context.Context, dsn string) (*Store, error) {
 		return nil, fmt.Errorf("parse dsn: %w", err)
 	}
 
-	// 连接池优化：大池子 + 健康检查
-	cfg.MaxConns = 80
-	cfg.MinConns = 10
+// 连接池：不限并发，由 PgBouncer 统一管控实际 PG 连接数
+        cfg.MaxConns = 500
+        cfg.MinConns = 20
 	cfg.MaxConnLifetime = 30 * time.Minute
 	cfg.MaxConnIdleTime = 5 * time.Minute
 	cfg.HealthCheckPeriod = 30 * time.Second

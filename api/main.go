@@ -37,7 +37,7 @@ func main() {
 		Addr:         cfg.RedisAddr,
 		Password:     cfg.RedisPassword,
 		DB:           0,
-		PoolSize:     100,    // 高并发连接池
+		PoolSize:     0,      // 0 = 不限（自动按 CPU 核心数 * 10）
 		MinIdleConns: 20,
 		DialTimeout:  3 * time.Second,
 		ReadTimeout:  2 * time.Second,
