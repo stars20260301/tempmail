@@ -1,4 +1,3 @@
-// Package handler - email 处理器
 package handler
 
 import (
@@ -11,26 +10,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// EmailHandler 处理邮件的读取和删除请求。
-// 路由（均需认证，URL 嵌套在邮箱 ID 下）：
-//   GET    /api/mailboxes/:id/emails             — List（邮件摘要列表，不含正文）
-//   GET    /api/mailboxes/:id/emails/:email_id   — Get（邮件完整内容含 HTML）
-//   DELETE /api/mailboxes/:id/emails/:email_id   — Delete（删除单封邮件）
-//
-// 所有操作均先通过 GetMailbox(mailboxID, accountID) 验证邮箱归属，
-// 确保用户只能操作属于自己的邮箱中的邮件（双重 ID 绑定防越权）。
 type EmailHandler struct {
 	store *store.Store
 }
 
-// NewEmailHandler 构造 EmailHandler。
 func NewEmailHandler(s *store.Store) *EmailHandler {
 	return &EmailHandler{store: s}
 }
 
-// List 返回邮箱中的邮件摘要列表（不含正文，节省带宽）。
-// GET /api/mailboxes/:id/emails?page=1&size=20
-// 按收件时间倒序排列，最新邮件在最前。
+// GET /api/mailboxes/:mailbox_id/emails - 列出邮件
 func (h *EmailHandler) List(c *gin.Context) {
 	account := middleware.GetAccount(c)
 	mailboxID, err := parseUUID(c.Param("id"))
@@ -65,8 +53,7 @@ func (h *EmailHandler) List(c *gin.Context) {
 	})
 }
 
-// Get 返回单封邮件的完整内容（含 body_text / body_html / raw_message）。
-// GET /api/mailboxes/:id/emails/:email_id
+// GET /api/mailboxes/:mailbox_id/emails/:id - 读取邮件内容
 func (h *EmailHandler) Get(c *gin.Context) {
 	account := middleware.GetAccount(c)
 	mailboxID, err := parseUUID(c.Param("id"))
@@ -97,8 +84,7 @@ func (h *EmailHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"email": email})
 }
 
-// Delete 删除单封邮件。
-// DELETE /api/mailboxes/:id/emails/:email_id
+// DELETE /api/mailboxes/:mailbox_id/emails/:id - 删除邮件
 func (h *EmailHandler) Delete(c *gin.Context) {
 	account := middleware.GetAccount(c)
 	mailboxID, err := parseUUID(c.Param("id"))

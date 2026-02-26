@@ -1,56 +1,43 @@
 # ============================================================
-# Postfix 主配置文件 - 仅收件模式（高并发优化版）
-# ============================================================
-# 注意：本文件 myhostname/mydomain 在运行时被 entrypoint.sh 覆盖
-# 真正需要修改的是 .env 中的 SMTP_HOSTNAME / SMTP_SERVER_IP
+# Postfix 主配置 - 仅收件模式 (catch-all)
 # ============================================================
 smtpd_banner = $myhostname ESMTP
 biff = no
 append_dot_mydomain = no
+
+# TLS (基础)
 smtpd_use_tls = no
 
-# ── 基本主机名（运行时由 entrypoint.sh 用环境变量覆盖）──────────
-myhostname = mail.example.com
-mydomain   = example.com
-myorigin   = $mydomain
+# 基本设置
+myhostname = mail.123nhh.xyz
+mydomain = 123nhh.xyz
+myorigin = $mydomain
 inet_interfaces = all
 inet_protocols = ipv4
 
-# ── 收件模式：禁用本地投递和中继 ─────────────────────────────
-mydestination  =
-relay_domains  =
+# 只收件，不中继
+mydestination =
+relay_domains =
 local_transport = error:local delivery disabled
 local_recipient_maps =
 
-# ── 虚拟域名收件配置 ─────────────────────────────────────────
+# 虚拟域名 catch-all
 virtual_mailbox_domains = hash:/etc/postfix/virtual_domains
 virtual_transport = mailreceiver:
 
-# ── 反垃圾邮件限制 ───────────────────────────────────────────
+# 限制
 smtpd_recipient_restrictions =
     permit_mynetworks,
     reject_unauth_destination
 
-# ── 高并发核心参数 ────────────────────────────────────────────
-# 单个客户端最大同时连接数：0 = 不限制
-# 注册机场景下发件方 IP 集中，限制会直接卡死收件
-smtpd_client_connection_count_limit = 0
-
-# 单个客户端每秒连接速率：0 = 不限制
-smtpd_client_connection_rate_limit  = 0
-
-# Postfix 总进程数上限，设为 1000 足以应对高并发
-# smtp(0不限) + mailreceiver(0不限) + 内部进程 ~20，留足余量
-default_process_limit = 1000
-
-# ── 消息大小 ──────────────────────────────────────────────────
+# 性能优化
+smtpd_client_connection_count_limit = 50
+smtpd_client_connection_rate_limit = 100
+default_process_limit = 100
+maximal_queue_lifetime = 1d
+bounce_queue_lifetime = 1d
 message_size_limit = 10240000
 
-# 关闭 stress 模式下的超时压缩
-smtpd_timeout = 300s
-
-# ── 队列参数：注册机场景时效性要求高，失败后快速重试 ──────────
-maximal_queue_lifetime  = 1h
-bounce_queue_lifetime   = 1h
-minimal_backoff_time    = 10s
-maximal_backoff_time    = 60s
+# 并发
+smtp_destination_concurrency_limit = 20
+default_destination_concurrency_limit = 50

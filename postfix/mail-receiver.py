@@ -1,115 +1,83 @@
 #!/usr/bin/env python3
 """
-mail-receiver.py — Postfix pipe 传输程序（高并发优化版）
-
-调用方式（master.cf 中定义）：
-    /usr/local/bin/mail-receiver ${recipient}
-    Postfix 通过 stdin 传入完整 RFC 2822 邮件，收件人由 argv[1] 传入。
-
-退出码：
-    0  — 成功或静默丢弃（收件人不存在）
-    75 — EX_TEMPFAIL，Postfix 放入重试队列（API 不可达时使用）
-
-高并发优化点：
-    - stdin 以 binary 模式读取，避免编码解码开销
-    - HTTP timeout 缩短为 3s（快速失败，避免进程堆积）
-    - 使用 http.client 直连，跳过 urllib 的额外封装层
-    - 不解析 JSON 响应体，读完即丢弃，减少 I/O 等待
-    - MIME 解析异常直接丢弃（exit 0），不阻塞队列
-
-环境变量：
-    API_URL — Go API 内部地址，默认 http://api:8080
+mail-receiver: Postfix pipe 程序
+从 stdin 读取原始邮件，解析后通过 HTTP POST 发送给 Go API 的内部投递接口。
+使用 Python 因为 email 标准库对 MIME 解析最成熟。
 """
-
 import sys
 import os
 import email
 import email.policy
 import json
-import http.client
-import urllib.parse
+import urllib.request
+import urllib.error
 
 API_URL = os.environ.get("API_URL", "http://api:8080")
 
-
 def main():
+    # 从命令行参数获取收件人
     if len(sys.argv) < 2:
+        print("Usage: mail-receiver <recipient>", file=sys.stderr)
         sys.exit(1)
 
     recipient = sys.argv[1].lower().strip()
 
-    # 以 binary 模式读取，避免 Python 默认编码检测开销
-    raw_bytes = sys.stdin.buffer.read()
-    if not raw_bytes:
+    # 从 stdin 读取原始邮件
+    raw = sys.stdin.read()
+    if not raw:
         sys.exit(0)
 
-    raw_str = raw_bytes.decode("utf-8", errors="replace")
+    # 解析 MIME 邮件
+    msg = email.message_from_string(raw, policy=email.policy.default)
 
-    # 解析 MIME，出错直接丢弃（exit 0），不阻塞队列
-    try:
-        msg = email.message_from_string(raw_str, policy=email.policy.default)
-    except Exception:
-        sys.exit(0)
-
-    sender = str(msg.get("From", ""))
-    subject = str(msg.get("Subject", ""))
+    sender = msg.get("From", "")
+    subject = msg.get("Subject", "")
     body_text = ""
     body_html = ""
 
-    try:
-        if msg.is_multipart():
-            for part in msg.walk():
-                ct = part.get_content_type()
-                if ct == "text/plain" and not body_text:
-                    body_text = part.get_content()
-                elif ct == "text/html" and not body_html:
-                    body_html = part.get_content()
+    if msg.is_multipart():
+        for part in msg.walk():
+            ct = part.get_content_type()
+            if ct == "text/plain" and not body_text:
+                body_text = part.get_content()
+            elif ct == "text/html" and not body_html:
+                body_html = part.get_content()
+    else:
+        ct = msg.get_content_type()
+        content = msg.get_content()
+        if ct == "text/html":
+            body_html = content
         else:
-            ct = msg.get_content_type()
-            content = msg.get_content()
-            if ct == "text/html":
-                body_html = content
-            else:
-                body_text = content
-    except Exception:
-        pass
+            body_text = content
 
-    payload = json.dumps(
-        {
-            "recipient": recipient,
-            "sender": sender,
-            "subject": subject,
-            "body_text": body_text if isinstance(body_text, str) else "",
-            "body_html": body_html if isinstance(body_html, str) else "",
-            "raw": raw_str,
-        },
-        ensure_ascii=False,
-    ).encode("utf-8")
+    # 发送到 API
+    payload = json.dumps({
+        "recipient": recipient,
+        "sender": sender,
+        "subject": subject,
+        "body_text": body_text if isinstance(body_text, str) else str(body_text),
+        "body_html": body_html if isinstance(body_html, str) else str(body_html),
+        "raw": raw,
+    }).encode("utf-8")
 
-    # 使用 http.client 直连，3s 超时（快速失败，避免进程堆积）
-    parsed = urllib.parse.urlparse(API_URL)
-    host = parsed.hostname or "api"
-    port = parsed.port or 8080
+    req = urllib.request.Request(
+        f"{API_URL}/internal/deliver",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
 
     try:
-        conn = http.client.HTTPConnection(host, port, timeout=3)
-        conn.request(
-            "POST",
-            "/internal/deliver",
-            body=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Content-Length": str(len(payload)),
-            },
-        )
-        resp = conn.getresponse()
-        resp.read()  # 读完丢弃，释放连接
-        conn.close()
-        sys.exit(0)
-    except Exception as e:
-        print(f"deliver error: {e}", file=sys.stderr)
-        sys.exit(75)  # EX_TEMPFAIL：放入 Postfix 重试队列
-
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read())
+            if result.get("status") == "delivered":
+                sys.exit(0)
+            # discarded (unknown recipient) - still exit 0 so Postfix doesn't bounce
+            sys.exit(0)
+    except urllib.error.URLError as e:
+        print(f"Error delivering mail: {e}", file=sys.stderr)
+        # 返回 75 = tempfail，Postfix 会稍后重试
+        sys.exit(75)
 
 if __name__ == "__main__":
     main()
